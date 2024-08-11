@@ -183,7 +183,12 @@ pub struct WGConf {
 pub struct WGConfInterface {
     pub address: IpAddr,
     pub private_key: WGPrivateKey,
-    #[serde(rename = "DNS", with = "optional_csv_vec", skip_serializing_if = "Option::is_none", default)]
+    #[serde(
+        rename = "DNS",
+        with = "optional_csv_vec",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub dns: Option<Vec<IpAddr>>,
 }
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
