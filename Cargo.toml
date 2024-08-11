@@ -11,7 +11,7 @@ clap = { version = "4.5.9", features = ["derive", "cargo", "env", "unicode", "wr
 erased-serde = "0.4.5"
 fastping-rs = "0.2.4"
 rand = "0.8.5"
-rustls = "0.23.11"
+rustls = { version = "0.23.11", default-features = false, features = ["ring", "tls12", "std"] }
 rustls-pemfile = { version = "2.1.2", default-features = false }
 rustls-platform-verifier = "0.3.2"
 rustls-webpki = "0.102.5"
