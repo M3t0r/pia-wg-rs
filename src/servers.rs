@@ -41,7 +41,7 @@ impl ServerList {
     where
         F: FnMut(&Server) -> bool,
     {
-        self.0.retain(f)
+        self.0.retain(f);
     }
     pub fn get_region(self, region: &str) -> Self {
         Self(

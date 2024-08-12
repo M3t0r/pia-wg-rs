@@ -14,24 +14,21 @@ use fastping_rs::Pinger;
 use slog::{debug, info};
 
 use crate::servers::{PingResults, ServerList, ServerListResponse};
-use crate::token::{Token, TokenResponse};
+use crate::token::{Response as TokenResponse, Token};
 
 pub const PIA_SERVER_API_PORT: u16 = 1337u16;
 
 pub fn get_token(
     log: &slog::Logger,
     http_agent: &ureq::Agent,
-    username: String,
-    password: String,
+    username: &str,
+    password: &str,
 ) -> Result<Token, Box<dyn Error>> {
     let endpoint = "https://www.privateinternetaccess.com/api/client/v2/token";
-    debug!(log, "logging in"; "user" => username.clone());
+    debug!(log, "logging in"; "user" => username.to_string());
     let resp: TokenResponse = http_agent
         .post(endpoint)
-        .send_form(&[
-            ("username", username.as_str()),
-            ("password", password.as_str()),
-        ])?
+        .send_form(&[("username", username), ("password", password)])?
         .into_json()?;
     Ok(resp.token)
 }
@@ -99,7 +96,7 @@ pub fn ping_servers(
         "measurements" => pings,
     );
 
-    let (pinger, result_stream) = Pinger::new(Some(timeout.as_millis() as u64), None)?;
+    let (pinger, result_stream) = Pinger::new(Some(u64::try_from(timeout.as_millis())?), None)?;
     for s in servers {
         pinger.add_ipaddr(&s.ip.to_string());
     }
@@ -130,7 +127,7 @@ pub fn ping_servers(
             let mut sorted = measurements.iter().filter_map(|m| *m).collect::<Vec<_>>();
             sorted.sort();
             let median = sorted.get(sorted.len() / 2);
-            (addr, (median.cloned(), measurements.clone()))
+            (addr, (median.copied(), measurements.clone()))
         })
         .collect();
     Ok(results)
@@ -139,7 +136,7 @@ pub fn ping_servers(
 pub fn add_wg_key(
     log: &slog::Logger,
     http_agent: &ureq::Agent,
-    token: Token,
+    token: &Token,
     server: &Server,
     public_key: &WGPublicKey,
 ) -> Result<WGAddedKey, Box<dyn Error>> {
@@ -177,6 +174,6 @@ pub fn get_public_ip(
         .get("https://www.privateinternetaccess.com/site-api/get-location-info")
         .call()?
         .into_json()?;
-    debug!(log, "network: got public IP"; "ip" => format!("{}", resp.ip), "isp" => resp.isp.to_owned());
+    debug!(log, "network: got public IP"; "ip" => format!("{}", resp.ip), "isp" => resp.isp.clone());
     Ok(resp)
 }

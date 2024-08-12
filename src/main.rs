@@ -115,8 +115,8 @@ impl AuthOptions {
             None => Ok(get_token(
                 log,
                 http_agent,
-                self.username.clone().expect("username has to be set"),
-                self.password.clone().expect("password has to be set"),
+                &self.username.clone().expect("username has to be set"),
+                &self.password.clone().expect("password has to be set"),
             )?),
         }
     }
@@ -148,7 +148,7 @@ struct ResolverStore {
 impl ResolverStore {
     fn new(log: &slog::Logger) -> Self {
         Self {
-            db: Default::default(),
+            db: Arc::default(),
             log: log.clone(),
         }
     }
@@ -230,7 +230,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli_args.command {
         Commands::Token { username, password } => {
-            println!("{}", get_token(&log, &http_agent, username, password)?);
+            println!("{}", get_token(&log, &http_agent, &username, &password)?);
         }
         Commands::Servers {
             country,
@@ -267,9 +267,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 drop(log); // flush all log messages
-                for (median_ping, s) in servers.into_iter() {
+                for (median_ping, s) in servers {
+                    #[allow(clippy::cast_precision_loss)]
                     let median_ping = median_ping.map_or("unreachable".to_string(), |p| {
-                        format!("{:>6.2}ms", p.as_nanos() as f32 / 1000000f32)
+                        format!("{:>6.2}ms", p.as_nanos() as f32 / 1_000_000_f32)
                     });
                     println!(
                         "found server: {} {:16} {:16} {:2} {:19} {:34} {:12} dns {}",
@@ -285,7 +286,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             } else {
                 drop(log); // flush all log messages
-                for s in servers.into_iter() {
+                for s in servers {
                     println!(
                         "found server: {:2} {:16} {:16} {:19} {:34} {:12} dns {}",
                         s.name,
@@ -325,12 +326,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let public_key = private_key.public();
 
             resolver_store.add(&server.name, PIA_SERVER_API_PORT, server.ip);
-            let added = add_wg_key(&log, &http_agent, token, &server, &public_key)?;
+            let added = add_wg_key(&log, &http_agent, &token, &server, &public_key)?;
 
             let mut conf = WGConf::from(added, private_key);
             if !dns {
                 dbg!(dns);
-                conf.disable_dns()
+                conf.disable_dns();
             }
 
             let ini = conf.to_ini()?;
@@ -338,7 +339,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Check { conf } => {
             let conf = fs::read_to_string(conf)?;
-            let conf = WGConf::from_ini(conf)?;
+            let conf = WGConf::from_ini(&conf)?;
             let public = get_public_ip(&log, &http_agent)?;
             println!(
                 "IP: {}, country: {}, ISP: {}",
@@ -350,12 +351,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "Not connected to PIA. Request went through the open internet"
                 );
                 return Err("Not connected to PIA. Request went through the open internet".into());
-            } else {
-                info!(
-                    log,
-                    "IP matches our VPN server, request got routed through VPN"
-                );
             }
+            info!(
+                log,
+                "IP matches our VPN server, request got routed through VPN"
+            );
         }
     }
 

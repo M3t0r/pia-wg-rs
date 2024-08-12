@@ -231,7 +231,7 @@ impl WGConf {
 
         Ok(ini)
     }
-    pub fn from_ini(ini: String) -> Result<Self, serde_ini::de::Error> {
+    pub fn from_ini(ini: &str) -> Result<Self, serde_ini::de::Error> {
         // "unmask" hostname again
         let ini = ini.replace("#Hostname=", "Hostname=");
 
@@ -280,7 +280,7 @@ impl WGConf {
 }
 
 mod optional_csv_vec {
-    use super::*;
+    use super::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S, T>(option: &Option<Vec<T>>, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -291,7 +291,7 @@ mod optional_csv_vec {
             Some(vec) => {
                 let csv = vec
                     .iter()
-                    .map(|item| item.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<Vec<_>>()
                     .join(",");
                 serializer.serialize_str(&csv)
@@ -317,16 +317,16 @@ mod optional_csv_vec {
 }
 
 mod csv_vec {
-    use super::*;
+    use super::{Deserialize, Deserializer, Serializer};
 
-    pub fn serialize<S, T>(vec: &Vec<T>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S, T>(vec: &[T], serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
         T: ToString,
     {
         let csv = vec
             .iter()
-            .map(|item| item.to_string())
+            .map(std::string::ToString::to_string)
             .collect::<Vec<_>>()
             .join(",");
         serializer.serialize_str(&csv)
@@ -367,7 +367,7 @@ mod tests {
     fn test_wgconf_serialization_deserialization() {
         let wg_conf = create_test_wgconf();
         let serialized = wg_conf.to_ini().expect("Failed to serialize WGConf");
-        let deserialized = WGConf::from_ini(serialized).expect("Failed to deserialize WGConf");
+        let deserialized = WGConf::from_ini(&serialized).expect("Failed to deserialize WGConf");
 
         assert_eq!(
             wg_conf, deserialized,
@@ -380,7 +380,7 @@ mod tests {
         wg_conf.disable_dns();
         let serialized = wg_conf.to_ini().unwrap();
         assert!(!serialized.contains("DNS"));
-        let deserialized = WGConf::from_ini(serialized).unwrap();
+        let deserialized = WGConf::from_ini(&serialized).unwrap();
         assert_eq!(wg_conf, deserialized);
     }
 
@@ -390,7 +390,7 @@ mod tests {
         wg_conf.restict_to_public_ips();
         let serialized = wg_conf.to_ini().unwrap();
         assert!(serialized.contains("0.0.0.0/5,8.0.0.0/7,11.0.0.0/8"));
-        let deserialized = WGConf::from_ini(serialized).unwrap();
+        let deserialized = WGConf::from_ini(&serialized).unwrap();
         assert_eq!(wg_conf, deserialized);
     }
 
