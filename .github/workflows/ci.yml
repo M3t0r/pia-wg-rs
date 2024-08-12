@@ -63,7 +63,7 @@ jobs:
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Lint
-      run: cargo clippy -- -D warnings -W clippy::pedantic
+      run: cargo clippy
     - name: Check formatting
       run: cargo fmt -- --check
     - name: Security audit

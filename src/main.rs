@@ -1,3 +1,11 @@
+#![warn(
+    clippy::correctness,
+    clippy::suspicious,
+    clippy::style,
+    clippy::perf,
+    clippy::redundant_type_annotations,
+    clippy::dbg_macro
+)]
 use std::{
     collections::HashMap,
     error::Error,
@@ -204,7 +212,7 @@ fn make_tls_config() -> rustls::client::ClientConfig {
 }
 
 fn make_http_agent(log: &slog::Logger, timeout: Duration) -> (ureq::Agent, ResolverStore) {
-    let store: ResolverStore = ResolverStore::new(log);
+    let store = ResolverStore::new(log);
     let http_agent = ureq::AgentBuilder::new()
         .timeout(timeout)
         .resolver(store.clone())
@@ -330,7 +338,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let mut conf = WGConf::from(added, private_key);
             if !dns {
-                dbg!(dns);
                 conf.disable_dns();
             }
 
