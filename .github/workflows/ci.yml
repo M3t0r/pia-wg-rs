@@ -37,6 +37,7 @@ jobs:
       run: cargo build --verbose
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
+      if: ${{ matrix.rust == 'stable' }}
       with:
         name: pia-wg-${{ runner.os }}-${{ runner.arch }}
         path: target/debug/pia-wg${{ runner.os == 'Windows' && '.exe' || '' }}
