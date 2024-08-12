@@ -18,7 +18,7 @@ jobs:
         rust: [stable, '1.74.0']
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install Rust ${{ matrix.rust }}
       uses: actions-rs/toolchain@v1
       with:
@@ -26,7 +26,7 @@ jobs:
         toolchain: ${{ matrix.rust }}
         override: true
     - name: Cache dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -36,7 +36,7 @@ jobs:
     - name: Build
       run: cargo build --verbose
     - name: Upload build artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: pia-wg-${{ runner.os }}-${{ runner.arch }}
         path: target/debug/pia-wg${{ runner.os == 'Windows' && '.exe' || '' }}
@@ -46,7 +46,7 @@ jobs:
   lint-and-check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install Rust stable
       uses: actions-rs/toolchain@v1
       with:
@@ -55,7 +55,7 @@ jobs:
         override: true
         components: rustfmt, clippy
     - name: Cache dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -74,7 +74,7 @@ jobs:
   spell-check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install codespell
       run: pip install codespell
     - name: Run codespell
