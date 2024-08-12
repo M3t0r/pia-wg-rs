@@ -220,6 +220,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let timeout = Duration::from_secs(cli_args.timeout);
 
     let log = make_logger(cli_args.debug);
+
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("could not install default crypto provider");
@@ -359,4 +360,57 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn verify_cli_help_in_readme() {
+        let mut cmd = Cli::command();
+        let help = cmd.render_help().to_string();
+        let expected_help = include_str!("../README.md")
+            .split("```")
+            .nth(1)
+            .unwrap()
+            .trim();
+        assert_eq!(help.trim(), expected_help);
+    }
+
+    #[test]
+    fn verify_rust_version_consistency() {
+        let cargo_toml = include_str!("../Cargo.toml");
+        let readme = include_str!("../README.md");
+        let ci_yml = include_str!("../.github/workflows/ci.yml");
+
+        let cargo_version = cargo_toml
+            .lines()
+            .find(|line| line.starts_with("rust-version"))
+            .and_then(|line| line.split('"').nth(1))
+            .expect("Rust version not found in Cargo.toml");
+
+        let readme_version = readme
+            .lines()
+            .find(|line| line.contains("rust-") && line.contains("%2B"))
+            .and_then(|line| line.split('-').nth(1))
+            .and_then(|v| v.split('%').next())
+            .expect("Rust version not found in README.md");
+
+        let ci_version = ci_yml
+            .lines()
+            .find(|line| line.contains("'1."))
+            .and_then(|line| line.split('\'').nth(1))
+            .expect("Rust version not found in ci.yml");
+
+        assert_eq!(
+            cargo_version, readme_version,
+            "Cargo.toml and README.md versions don't match"
+        );
+        assert_eq!(
+            cargo_version, ci_version,
+            "Cargo.toml and ci.yml versions don't match"
+        );
+    }
 }
