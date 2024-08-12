@@ -222,7 +222,7 @@ impl WGConf {
     pub fn to_ini(&self) -> Result<String, serde_ini::ser::Error> {
         let ini = serde_ini::to_string(&self)?;
 
-        // "mask" our hostname, since `wg setconf` errors out on unkown keys
+        // "mask" our hostname, since `wg setconf` errors out on unknown keys
         let ini = ini.replace("Hostname=", "#Hostname=");
 
         // strip CRs on non-windows platforms, aesthetic choice, functionally equivalent

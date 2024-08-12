@@ -77,7 +77,7 @@ enum Commands {
         #[command(flatten)]
         auth: AuthOptions,
         /// The name of the region to generate the wg.conf for. Use the servers command to find an
-        /// appropiate one for you.
+        /// appropriate one for you.
         #[arg(long)]
         region: String,
         /// Use PIA's DNS when active (requires to use wg-quick)
