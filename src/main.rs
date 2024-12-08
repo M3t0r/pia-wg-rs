@@ -201,9 +201,8 @@ fn make_tls_config() -> rustls::client::ClientConfig {
     let rustls_pemfile::Item::X509Certificate(pia_ca) = pia_ca else {
         panic!("Embedde PIA CA pem is not a certificate")
     };
-    let pia_ca = webpki::anchor_from_trusted_cert(&pia_ca)
-        .expect("Could not parse embedded PIA CA certificate");
-    let verifier = rustls_platform_verifier::Verifier::new_with_extra_roots([pia_ca.to_owned()]);
+    let verifier = rustls_platform_verifier::Verifier::new_with_extra_roots([pia_ca.to_owned()])
+        .expect("Could not use embedded PIA CA certificate");
 
     rustls::ClientConfig::builder()
         .dangerous() // required to provide our own verifier, but that verifier is safe
