@@ -13,7 +13,7 @@ fastping-rs = "0.2.4"
 rand = "0.8.5"
 rustls = { version = "0.23.12", default-features = false, features = ["ring", "tls12", "std"] }
 rustls-pemfile = "2.2.0"
-rustls-platform-verifier = "0.4.0"
+rustls-platform-verifier = "0.5.0"
 rustls-webpki = "0.102.6"
 serde = { version = "1.0.206", features = ["derive"] }
 serde_ini = "0.2.0"
