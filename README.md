@@ -1,7 +1,7 @@
 # PIA WireGuard CLI
 
 [![CI](https://github.com/M3t0r/pia-wg-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/M3t0r/pia-wg-rs/actions/workflows/ci.yml)
-[![Rust](https://img.shields.io/badge/rust-1.74.0%2B-blue.svg)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.81.0%2B-blue.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 
 A Rust-based command-line interface for managing Private Internet Access (PIA) WireGuard connections. This project replaces the `pia-foss/manual-connections` bash scripts with a less convoluted and more auditable solution.
