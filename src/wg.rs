@@ -7,7 +7,7 @@ use std::{
 
 use base64ct::Encoding;
 use rand::RngCore;
-use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 const WG_KEY_LEN: usize = 32usize;
 type WGKeyBytes = [u8; WG_KEY_LEN];

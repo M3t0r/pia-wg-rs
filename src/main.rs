@@ -18,12 +18,12 @@ use std::{
 };
 
 use clap::{Args, Parser, Subcommand};
-use slog::{debug, error, info, o, Drain};
+use slog::{Drain, debug, error, info, o};
 
 // all network related code is there, and only there
 mod network;
 use self::network::{
-    add_wg_key, get_public_ip, get_server_list, get_token, ping_servers, PIA_SERVER_API_PORT,
+    PIA_SERVER_API_PORT, add_wg_key, get_public_ip, get_server_list, get_token, ping_servers,
 };
 
 mod servers;
