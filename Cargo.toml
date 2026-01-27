@@ -12,7 +12,7 @@ erased-serde = "0.4.5"
 fastping-rs = "0.2.4"
 rand = "0.8.5"
 rustls = { version = "0.23.12", default-features = false, features = ["ring", "tls12", "std"] }
-rustls-pemfile = "2.2.0"
+rustls-pki-types = "1.9.0"
 rustls-platform-verifier = "0.5.0"
 rustls-webpki = "0.103.0"
 serde = { version = "1.0.206", features = ["derive"] }

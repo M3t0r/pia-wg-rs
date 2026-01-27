@@ -18,6 +18,10 @@ use std::{
 };
 
 use clap::{Args, Parser, Subcommand};
+use rustls_pki_types::{
+    CertificateDer,
+    pem::{PemObject, SectionKind},
+};
 use slog::{Drain, debug, error, info, o};
 
 // all network related code is there, and only there
@@ -190,18 +194,21 @@ impl ureq::Resolver for ResolverStore {
 }
 
 fn make_tls_config() -> rustls::client::ClientConfig {
-    let pia_ca = include_bytes!("../ca.rsa.4096.crt");
-    let pia_ca = rustls_pemfile::read_one_from_slice(pia_ca).expect("Error parsing the PIA CA pem");
-    let (pia_ca, remaining_bytes) = pia_ca.expect("No cert in embedded PIA CA pem found");
-    assert_eq!(
-        remaining_bytes.len(),
-        0,
+    let pia_ca_pem = include_bytes!("../ca.rsa.4096.crt");
+    let mut sections = <(SectionKind, Vec<u8>)>::pem_slice_iter(pia_ca_pem);
+    let (section_kind, pia_ca_der) = sections
+        .next()
+        .expect("No cert in embedded PIA CA pem found")
+        .expect("Error parsing the PIA CA pem");
+    assert!(
+        sections.next().is_none(),
         "Embedded PIA CA pem has unhandled data"
     );
-    let rustls_pemfile::Item::X509Certificate(pia_ca) = pia_ca else {
-        panic!("Embedde PIA CA pem is not a certificate")
-    };
-    let verifier = rustls_platform_verifier::Verifier::new_with_extra_roots([pia_ca.to_owned()])
+    if section_kind != SectionKind::Certificate {
+        panic!("Embedded PIA CA pem is not a certificate")
+    }
+    let pia_ca = CertificateDer::from(pia_ca_der);
+    let verifier = rustls_platform_verifier::Verifier::new_with_extra_roots([pia_ca])
         .expect("Could not use embedded PIA CA certificate");
 
     rustls::ClientConfig::builder()
