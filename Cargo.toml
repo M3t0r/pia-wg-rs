@@ -10,7 +10,7 @@ base64ct = { version = "1.6.0", features = ["std"] }
 clap = { version = "4.5.15", features = ["derive", "cargo", "env", "unicode", "wrap_help"] }
 erased-serde = "0.4.5"
 fastping-rs = "0.2.4"
-rand = "0.8.5"
+rand = "0.10.0"
 rustls = { version = "0.23.12", default-features = false, features = ["ring", "tls12", "std"] }
 rustls-pki-types = "1.9.0"
 rustls-platform-verifier = "0.5.0"
