@@ -6,7 +6,7 @@ use std::{
 };
 
 use base64ct::Encoding;
-use rand::RngCore;
+use rand::TryRng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 const WG_KEY_LEN: usize = 32usize;
@@ -25,7 +25,9 @@ impl WGPrivateKey {
     fn get_random_bytes() -> [u8; WG_KEY_LEN] {
         let mut bytes: WGKeyBytes = Default::default();
         // OsRng is good enough, `wg` also only reads from /dev/urandom
-        rand::rngs::OsRng.fill_bytes(&mut bytes);
+        rand::rngs::SysRng
+            .try_fill_bytes(&mut bytes)
+            .expect("Could not generate randomness for WG key");
         bytes
     }
     fn curve25519_clamp_secret(secret: &mut WGKeyBytes) {
