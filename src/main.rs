@@ -9,6 +9,7 @@
 use std::{
     collections::HashMap,
     error::Error,
+    fmt,
     fmt::Display,
     fs,
     net::{IpAddr, SocketAddr, ToSocketAddrs},
@@ -120,13 +121,13 @@ impl AuthOptions {
     fn get_token(
         &self,
         log: &slog::Logger,
-        http_agent: &ureq::Agent,
+        agent_public: &ureq::Agent,
     ) -> Result<Token, Box<dyn Error>> {
         match &self.token {
             Some(token) => Ok(token.clone()),
             None => Ok(get_token(
                 log,
-                http_agent,
+                agent_public,
                 &self.username.clone().expect("username has to be set"),
                 &self.password.clone().expect("password has to be set"),
             )?),
@@ -157,6 +158,11 @@ struct ResolverStore {
     db: Arc<RwLock<HashMap<String, SocketAddr>>>,
     log: slog::Logger,
 }
+impl fmt::Debug for ResolverStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ResolverStore").finish()
+    }
+}
 impl ResolverStore {
     fn new(log: &slog::Logger) -> Self {
         Self {
@@ -177,56 +183,96 @@ impl ResolverStore {
             .insert(name, addr);
     }
 }
-impl ureq::Resolver for ResolverStore {
-    fn resolve(&self, netloc: &str) -> std::io::Result<Vec<SocketAddr>> {
-        let db = self.db.read().expect("ResolverStore RwLock was poisend");
+impl ureq::unversioned::resolver::Resolver for ResolverStore {
+    fn resolve(
+        &self,
+        uri: &ureq::http::Uri,
+        _config: &ureq::config::Config,
+        _timeout: ureq::unversioned::transport::NextTimeout,
+    ) -> Result<ureq::unversioned::resolver::ResolvedSocketAddrs, ureq::Error> {
+        let authority = uri
+            .authority()
+            .ok_or_else(|| ureq::Error::BadUri("URI has no authority".into()))?;
+        let scheme = uri
+            .scheme_str()
+            .ok_or_else(|| ureq::Error::BadUri("URI has no scheme".into()))?;
+        let port = authority.port_u16().unwrap_or(match scheme {
+            "http" => 80,
+            "https" => 443,
+            _ => {
+                return Err(ureq::Error::BadUri(
+                    format!("unknown scheme: {scheme}").into(),
+                ));
+            }
+        });
+        let netloc = format!("{}:{port}", authority.host());
+
+        let db = self.db.read().expect("ResolverStore RwLock was poisoned");
         let num_entries = db.len();
-        let entry = db.get(netloc).copied();
+        let entry = db.get(&netloc).copied();
         drop(db);
 
-        let res = match entry {
-            Some(addr) => Ok(vec![addr]),
-            None => netloc.to_socket_addrs().map(Iterator::collect),
-        };
-        debug!(self.log, "resolved addr"; "name" => netloc, "addr" => format!("{:?}", res), "entries" => num_entries);
-        res
+        let mut resolved = ureq::unversioned::resolver::ResolvedSocketAddrs::from_fn(|_| {
+            SocketAddr::new(IpAddr::from([0, 0, 0, 0]), 0)
+        });
+        match entry {
+            Some(addr) => resolved.push(addr),
+            None => {
+                for addr in netloc.to_socket_addrs()?.take(16) {
+                    resolved.push(addr);
+                }
+            }
+        }
+
+        debug!(self.log, "resolved addr"; "name" => netloc, "addr" => format!("{:?}", resolved), "entries" => num_entries);
+        if resolved.is_empty() {
+            Err(ureq::Error::HostNotFound)
+        } else {
+            Ok(resolved)
+        }
     }
 }
 
-fn make_tls_config() -> rustls::client::ClientConfig {
-    let pia_ca_pem = include_bytes!("../ca.rsa.4096.crt");
-    let mut sections = <(SectionKind, Vec<u8>)>::pem_slice_iter(pia_ca_pem);
-    let (section_kind, pia_ca_der) = sections
-        .next()
-        .expect("No cert in embedded PIA CA pem found")
-        .expect("Error parsing the PIA CA pem");
-    assert!(
-        sections.next().is_none(),
-        "Embedded PIA CA pem has unhandled data"
-    );
-    if section_kind != SectionKind::Certificate {
-        panic!("Embedded PIA CA pem is not a certificate")
-    }
-    let pia_ca = CertificateDer::from(pia_ca_der);
-    let verifier = rustls_platform_verifier::Verifier::new_with_extra_roots([pia_ca])
-        .expect("Could not use embedded PIA CA certificate");
-
-    rustls::ClientConfig::builder()
-        .dangerous() // required to provide our own verifier, but that verifier is safe
-        .with_custom_certificate_verifier(Arc::new(verifier))
-        .with_no_client_auth()
-}
-
-fn make_http_agent(log: &slog::Logger, timeout: Duration) -> (ureq::Agent, ResolverStore) {
+fn make_http_agents(
+    log: &slog::Logger,
+    timeout: Duration,
+) -> (ureq::Agent, ureq::Agent, ResolverStore) {
     let store = ResolverStore::new(log);
-    let http_agent = ureq::AgentBuilder::new()
-        .timeout(timeout)
-        .resolver(store.clone())
-        .tls_config(Arc::new(make_tls_config()))
+    let agent_public = ureq::Agent::config_builder()
+        .timeout_global(Some(timeout))
+        .tls_config(
+            ureq::tls::TlsConfig::builder()
+                .provider(ureq::tls::TlsProvider::Rustls)
+                .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+                .build(),
+        )
         .user_agent(format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")).as_str())
         .build();
+    let agent_public = ureq::Agent::with_parts(
+        agent_public,
+        ureq::unversioned::transport::DefaultConnector::default(),
+        store.clone(),
+    );
 
-    (http_agent, store)
+    let pia_ca = ureq::tls::Certificate::from_pem(include_bytes!("../ca.rsa.4096.crt"))
+        .expect("Error parsing the embedded PIA CA certificate");
+    let agent_pia = ureq::Agent::config_builder()
+        .timeout_global(Some(timeout))
+        .tls_config(
+            ureq::tls::TlsConfig::builder()
+                .provider(ureq::tls::TlsProvider::Rustls)
+                .root_certs(ureq::tls::RootCerts::new_with_certs(&[pia_ca]))
+                .build(),
+        )
+        .user_agent(format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")).as_str())
+        .build();
+    let agent_pia = ureq::Agent::with_parts(
+        agent_pia,
+        ureq::unversioned::transport::DefaultConnector::default(),
+        store.clone(),
+    );
+
+    (agent_public, agent_pia, store)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -238,13 +284,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("could not install default crypto provider");
-    let (http_agent, resolver_store) = make_http_agent(&log, timeout);
+    let (agent_public, agent_pia, resolver_store) = make_http_agents(&log, timeout);
 
     debug!(log, "startup"; "args" => format!("{:?}", cli_args));
 
     match cli_args.command {
         Commands::Token { username, password } => {
-            println!("{}", get_token(&log, &http_agent, &username, &password)?);
+            println!("{}", get_token(&log, &agent_public, &username, &password)?);
         }
         Commands::Servers {
             country,
@@ -253,7 +299,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             measure,
             top,
         } => {
-            let mut servers = get_server_list(&log, &http_agent)?;
+            let mut servers = get_server_list(&log, &agent_public)?;
 
             if let Some(country) = country {
                 servers.retain(|s| s.country.to_lowercase() == country.to_lowercase());
@@ -321,7 +367,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             port_forward,
             dns,
         } => {
-            let servers = get_server_list(&log, &http_agent)?;
+            let servers = get_server_list(&log, &agent_public)?;
             let mut servers = servers.get_region(&region);
             if port_forward {
                 servers.retain(|s| s.port_forward);
@@ -335,12 +381,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut servers = servers.enrich(&ping_results);
             let server = servers.best().ok_or("No suitable server found")?;
 
-            let token = auth.get_token(&log, &http_agent)?;
+            let token = auth.get_token(&log, &agent_public)?;
             let private_key = WGPrivateKey::new();
             let public_key = private_key.public();
 
             resolver_store.add(&server.name, PIA_SERVER_API_PORT, server.ip);
-            let added = add_wg_key(&log, &http_agent, &token, &server, &public_key)?;
+            let added = add_wg_key(&log, &agent_pia, &token, &server, &public_key)?;
 
             let mut conf = WGConf::from(added, private_key);
             if !dns {
@@ -353,7 +399,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Check { conf } => {
             let conf = fs::read_to_string(conf)?;
             let conf = WGConf::from_ini(&conf)?;
-            let public = get_public_ip(&log, &http_agent)?;
+            let public = get_public_ip(&log, &agent_public)?;
             println!(
                 "IP: {}, country: {}, ISP: {}",
                 public.ip, public.country, public.isp

@@ -28,8 +28,9 @@ pub fn get_token(
     debug!(log, "logging in"; "user" => username.to_string());
     let resp: TokenResponse = http_agent
         .post(endpoint)
-        .send_form(&[("username", username), ("password", password)])?
-        .into_json()?;
+        .send_form([("username", username), ("password", password)])?
+        .body_mut()
+        .read_json()?;
     Ok(resp.token)
 }
 
@@ -38,7 +39,11 @@ pub fn get_server_list(
     http_agent: &ureq::Agent,
 ) -> Result<ServerList, Box<dyn Error>> {
     let endpoint = "https://serverlist.piaservers.net/vpninfo/servers/v6";
-    let resp = http_agent.get(endpoint).call()?.into_string()?;
+    let resp = http_agent
+        .get(endpoint)
+        .call()?
+        .body_mut()
+        .read_to_string()?;
 
     debug!(log, "network: server list"; "resp" => &resp);
 
@@ -141,14 +146,13 @@ pub fn add_wg_key(
     public_key: &WGPublicKey,
 ) -> Result<WGAddedKey, Box<dyn Error>> {
     let server = &server.name;
+    let public_key = public_key.to_string();
     let resp: WGAddedKeyResponse = http_agent
         .get(&format!("https://{server}:{PIA_SERVER_API_PORT}/addKey"))
-        .query_pairs([
-            ("pt", token.as_str()),
-            ("pubkey", public_key.to_string().as_str()),
-        ])
+        .query_pairs([("pt", token.as_str()), ("pubkey", public_key.as_str())])
         .call()?
-        .into_json()?;
+        .body_mut()
+        .read_json()?;
     if resp.status != "OK" {
         debug!(log, "Failed to add WG pub key to server"; "server" => server, "resp" => format!("{:?}", resp));
         return Err("Error response from server".into());
@@ -173,7 +177,8 @@ pub fn get_public_ip(
     let resp: PublicIPCheck = http_agent
         .get("https://www.privateinternetaccess.com/site-api/get-location-info")
         .call()?
-        .into_json()?;
+        .body_mut()
+        .read_json()?;
     debug!(log, "network: got public IP"; "ip" => format!("{}", resp.ip), "isp" => resp.isp.clone());
     Ok(resp)
 }
