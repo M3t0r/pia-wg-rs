@@ -12,6 +12,7 @@ A Rust-based command-line interface for managing Private Internet Access (PIA) W
 - List available PIA servers with optional filtering
 - Measure latency to servers
 - Verify VPN connection status
+- Register and maintain a forwarded port on an active PIA tunnel
 - Support for authentication via username/password or token
 
 ## Design Highlights
@@ -31,6 +32,7 @@ Commands:
   servers  List available servers
   create   Generates a new wireguard config
   check    Verify the VPN connection is active and used
+  port     Register and maintain a forwarded port on an active PIA WireGuard tunnel
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -41,6 +43,21 @@ Options:
 ```
 
 For more detailed usage instructions, run `pia-wg help <COMMAND>`.
+
+To use portforwarding:
+
+```bash
+pia-wg create --region $region --dns --port-forward > pia.conf
+sudo wg-quick up ./pia.conf
+pia-wg port register --conf pia.conf
+pia-wg port activate --conf pia.conf # regreshes every 5 minutes
+```
+
+The port-forwarding commands have to be run with the WireGuard interface active.
+`register` updates the config file if possible, otherwise prints the new config
+to `stdout`. `activate` supports calling a callback executable (`echo` by
+default). It receives the port, status, and message from the API respone as args
+and environment variables. It is called on every iteration.
 
 ## Avoiding `sudo`
 
