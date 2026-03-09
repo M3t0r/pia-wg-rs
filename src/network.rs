@@ -1,4 +1,8 @@
 use crate::check::PublicIPCheck;
+use crate::port_forward::{
+    BindResponse as PortForwardBindResponse, BindStatus as PortForwardBindStatus,
+    Signature as PortForwardSignature, SignatureResponse as PortForwardSignatureResponse,
+};
 use crate::servers::Server;
 use crate::wg::WGAddedKey;
 use crate::wg::WGAddedKeyResponse;
@@ -17,6 +21,7 @@ use crate::servers::{PingResults, ServerList, ServerListResponse};
 use crate::token::{Response as TokenResponse, Token};
 
 pub const PIA_SERVER_API_PORT: u16 = 1337u16;
+pub const PIA_PORT_FORWARD_API_PORT: u16 = 19999u16;
 
 pub fn get_token(
     log: &slog::Logger,
@@ -180,5 +185,63 @@ pub fn get_public_ip(
         .body_mut()
         .read_json()?;
     debug!(log, "network: got public IP"; "ip" => format!("{}", resp.ip), "isp" => resp.isp.clone());
+    Ok(resp)
+}
+
+pub fn get_port_forward_signature(
+    log: &slog::Logger,
+    http_agent: &ureq::Agent,
+    token: &Token,
+    server_name: &str,
+) -> Result<PortForwardSignature, Box<dyn Error>> {
+    let resp: PortForwardSignatureResponse = http_agent
+        .get(&format!(
+            "https://{server_name}:{PIA_PORT_FORWARD_API_PORT}/getSignature"
+        ))
+        .query("token", token.as_str())
+        .call()?
+        .body_mut()
+        .read_json()?;
+    if resp.status != "OK" {
+        debug!(log, "Failed to get port-forward signature"; "server" => server_name, "resp" => format!("{:?}", resp));
+        return Err("Error response from port-forward getSignature".into());
+    }
+    let signature = PortForwardSignature::try_from(resp)?;
+    debug!(
+        log,
+        "network: got port-forward signature";
+        "server" => server_name,
+        "port" => signature.payload.port,
+        "expires_at" => signature.payload.expires_at.to_string()
+    );
+    Ok(signature)
+}
+
+pub fn bind_port_forward_port(
+    log: &slog::Logger,
+    http_agent: &ureq::Agent,
+    server_name: &str,
+    signature: &PortForwardSignature,
+) -> Result<PortForwardBindResponse, Box<dyn Error>> {
+    let resp: PortForwardBindResponse = http_agent
+        .get(&format!(
+            "https://{server_name}:{PIA_PORT_FORWARD_API_PORT}/bindPort"
+        ))
+        .query("payload", &signature.payload_raw)
+        .query("signature", &signature.signature)
+        .call()?
+        .body_mut()
+        .read_json()?;
+    if resp.status != PortForwardBindStatus::Ok {
+        debug!(log, "Failed to bind port-forward port"; "server" => server_name, "resp" => format!("{:?}", resp));
+        return Err("Error response from port-forward bindPort".into());
+    }
+    debug!(
+        log,
+        "network: bound port-forward port";
+        "server" => server_name,
+        "port" => signature.payload.port,
+        "message" => resp.message.as_str()
+    );
     Ok(resp)
 }
