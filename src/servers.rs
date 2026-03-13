@@ -1,4 +1,4 @@
-use std::{collections::HashMap, net::IpAddr, time::Duration};
+use std::{collections::HashMap, error::Error, net::IpAddr, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
@@ -51,15 +51,14 @@ impl ServerList {
                 .collect(),
         )
     }
-    pub fn enrich(self, ping_results: &PingResults) -> PingedServerList {
-        let mut servers: Vec<(Option<Duration>, Server)> = self
-            .0
-            .into_iter()
-            .map(|s| {
-                let (median_ping, _) = ping_results.get(&s.ip).expect("didn't ping all servers");
-                (*median_ping, s)
-            })
-            .collect();
+    pub fn enrich(self, ping_results: &PingResults) -> Result<PingedServerList, Box<dyn Error>> {
+        let mut servers = Vec::with_capacity(self.0.len());
+        for server in self.0 {
+            let (median_ping, _) = ping_results
+                .get(&server.ip)
+                .ok_or_else(|| format!("missing ping result for {}", server.ip))?;
+            servers.push((*median_ping, server));
+        }
 
         servers.sort_by(|(p1, _), (p2, _)| match (p1, p2) {
             (Some(p1), Some(p2)) => p2.cmp(p1),
@@ -68,7 +67,7 @@ impl ServerList {
             (_, None) => std::cmp::Ordering::Greater,
         });
 
-        PingedServerList(servers)
+        Ok(PingedServerList(servers))
     }
 }
 
