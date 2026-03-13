@@ -362,7 +362,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Some(measure) = measure {
                 let ping_results = ping_servers(&log, &servers, measure, timeout)?;
-                let mut servers = servers.enrich(&ping_results);
+                let mut servers = servers.enrich(&ping_results)?;
 
                 if let Some(top) = top {
                     servers.top(top);
@@ -420,7 +420,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             let ping_results = ping_servers(&log, &servers, measure, timeout)?;
-            let mut servers = servers.enrich(&ping_results);
+            let mut servers = servers.enrich(&ping_results)?;
             let server = servers.best().ok_or("No suitable server found")?;
 
             let token = auth.get_token(&log, &agent_public)?;
