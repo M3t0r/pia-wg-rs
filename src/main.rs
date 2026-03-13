@@ -23,7 +23,7 @@ use std::{
 
 use clap::{Args, Parser, Subcommand};
 use slog::{Drain, debug, error, info, o, warn};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::OffsetDateTime;
 
 // all network related code is there, and only there
 mod config;
@@ -465,11 +465,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let (server_name, server_ip) = wg_conf.port_forward_target()?;
                 resolver_store.add(server_name, PIA_PORT_FORWARD_API_PORT, server_ip);
                 let signature = get_port_forward_signature(&log, &agent_pia, &token, server_name)?;
-                wg_conf.peer.port_forward_port = Some(signature.payload.port);
-                wg_conf.peer.port_forward_expiration =
-                    Some(signature.payload.expires_at.format(&Rfc3339)?);
-                wg_conf.peer.port_forward_payload = Some(signature.payload_raw);
-                wg_conf.peer.port_forward_signature = Some(signature.signature);
+                wg_conf.peer.port_forward = Some(PortForwardMetadata::from_signature(&signature)?);
                 let ini = wg_conf.to_ini()?;
 
                 match fs::write(&conf, &ini) {
