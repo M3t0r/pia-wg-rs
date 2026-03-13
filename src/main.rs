@@ -108,6 +108,9 @@ enum Commands {
         /// Filter servers that support port forwarding
         #[arg(long)]
         port_forward: bool,
+        /// Restrict routes to public IPv4 networks instead of tunneling all IPv4 traffic
+        #[arg(long)]
+        public_networks_only: bool,
     },
     /// Verify the VPN connection is active and used
     Check { conf: PathBuf },
@@ -408,6 +411,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             measure,
             port_forward,
             dns,
+            public_networks_only,
         } => {
             let servers = get_server_list(&log, &agent_public)?;
             let mut servers = servers.get_region(&region);
@@ -433,6 +437,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut conf = WGConf::from(added, private_key);
             if !dns {
                 conf.disable_dns();
+            }
+            if public_networks_only {
+                conf.restict_to_public_ips();
             }
 
             let ini = conf.to_ini()?;
