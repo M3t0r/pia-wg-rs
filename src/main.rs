@@ -244,9 +244,7 @@ impl ureq::unversioned::resolver::Resolver for ResolverStore {
             "http" => 80,
             "https" => 443,
             _ => {
-                return Err(ureq::Error::BadUri(
-                    format!("unknown scheme: {scheme}").into(),
-                ));
+                return Err(ureq::Error::BadUri(format!("unknown scheme: {scheme}")));
             }
         });
         let netloc = format!("{}:{port}", authority.host());
@@ -465,8 +463,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let token = auth.get_token(&log, &agent_public)?;
                 let mut wg_conf = WGConf::from_path(&conf)?;
                 let (server_name, server_ip) = wg_conf.port_forward_target()?;
-                resolver_store.add(&server_name, PIA_PORT_FORWARD_API_PORT, server_ip);
-                let signature = get_port_forward_signature(&log, &agent_pia, &token, &server_name)?;
+                resolver_store.add(server_name, PIA_PORT_FORWARD_API_PORT, server_ip);
+                let signature = get_port_forward_signature(&log, &agent_pia, &token, server_name)?;
                 wg_conf.peer.port_forward_port = Some(signature.payload.port);
                 wg_conf.peer.port_forward_expiration =
                     Some(signature.payload.expires_at.format(&Rfc3339)?);
@@ -506,7 +504,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 loop {
                     let conf = WGConf::from_path(&conf)?;
                     let (server_name, server_ip) = conf.port_forward_target()?;
-                    resolver_store.add(&server_name, PIA_PORT_FORWARD_API_PORT, server_ip);
+                    resolver_store.add(server_name, PIA_PORT_FORWARD_API_PORT, server_ip);
                     let signature: PortForwardSignature = conf.port_forward_signature()?;
                     if signature.is_expired(OffsetDateTime::now_utc()) {
                         warn!(
@@ -519,7 +517,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     let next_bind_at = Instant::now() + Duration::from_secs(bind_interval);
-                    let bind = bind_port_forward_port(&log, &agent_pia, &server_name, &signature);
+                    let bind = bind_port_forward_port(&log, &agent_pia, server_name, &signature);
                     let Ok(bind) = bind else {
                         let err =
                             bind.expect_err("let-else error branch must contain the bind error");
