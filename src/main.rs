@@ -555,18 +555,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
 
                     let port = signature.payload.port.to_string();
-                    let status = Command::new(&callback)
+                    let callback_result = Command::new(&callback)
                         .arg(&port)
                         .arg(bind.status.as_str())
                         .arg(bind.message.as_str())
                         .env("PIA_PORT", &port)
                         .env("PIA_PORT_STATUS", bind.status.as_str())
                         .env("PIA_PORT_MESSAGE", bind.message.as_str())
-                        .status()?;
-                    if !status.success() {
-                        return Err(
-                            format!("callback exited with non-zero status: {status}").into()
-                        );
+                        .status();
+                    match callback_result {
+                        Ok(status) if status.success() => {}
+                        Ok(status) => {
+                            warn!(
+                                log,
+                                "callback exited with non-zero status";
+                                "callback" => callback.to_string_lossy().to_string(),
+                                "status" => status.to_string()
+                            );
+                        }
+                        Err(err) => {
+                            warn!(
+                                log,
+                                "could not execute callback";
+                                "callback" => callback.to_string_lossy().to_string(),
+                                "error" => err.to_string()
+                            );
+                        }
                     }
 
                     if once {

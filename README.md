@@ -57,7 +57,8 @@ The port-forwarding commands have to be run with the WireGuard interface active.
 `register` updates the config file if possible, otherwise prints the new config
 to `stdout`. `activate` supports calling a callback executable (`echo` by
 default). It receives the port, status, and message from the API respone as args
-and environment variables. It is called on every iteration.
+and environment variables. It is called on every iteration. Callback failures are
+logged but do not stop the renewal loop.
 
 ## Avoiding `sudo`
 
