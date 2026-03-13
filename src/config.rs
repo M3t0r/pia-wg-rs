@@ -57,31 +57,52 @@ pub struct WGConfPeer {
     pub allowed_ips: Vec<String>,
     pub endpoint: SocketAddr,
     pub hostname: Option<String>,
-    #[serde(
-        rename = "ForwardedPort",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub port_forward_port: Option<u16>,
-    #[serde(
-        rename = "ForwardedPortExpirationDate",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub port_forward_expiration: Option<String>,
-    #[serde(
-        rename = "ForwardedPortActivationPayload",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub port_forward_payload: Option<String>,
-    #[serde(
-        rename = "ForwardedPortActivationSignature",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub port_forward_signature: Option<String>,
+    #[serde(flatten, with = "port_forward_metadata", default)]
+    pub port_forward: Option<PortForwardMetadata>,
     pub persistent_keepalive: Option<u16>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct PortForwardMetadata {
+    #[serde(rename = "ForwardedPort")]
+    pub port: u16,
+    #[serde(rename = "ForwardedPortExpirationDate")]
+    pub expiration: String,
+    #[serde(rename = "ForwardedPortActivationPayload")]
+    pub payload: String,
+    #[serde(rename = "ForwardedPortActivationSignature")]
+    pub signature: String,
+}
+
+impl PortForwardMetadata {
+    pub fn from_signature(signature: &PortForwardSignature) -> Result<Self, Box<dyn Error>> {
+        Ok(Self {
+            port: signature.payload.port,
+            expiration: signature.payload.expires_at.format(&Rfc3339)?,
+            payload: signature.payload_raw.clone(),
+            signature: signature.signature.clone(),
+        })
+    }
+
+    pub fn try_into_signature(self) -> Result<PortForwardSignature, Box<dyn Error>> {
+        let Self {
+            port,
+            expiration,
+            payload,
+            signature,
+        } = self;
+        let signature = PortForwardSignature::try_from_parts(payload, signature)?;
+        if signature.payload.port != port {
+            return Err("Stored #ForwardedPort metadata does not match the payload".into());
+        }
+        let expiration = OffsetDateTime::parse(&expiration, &Rfc3339)?;
+        if signature.payload.expires_at != expiration {
+            return Err(
+                "Stored #ForwardedPortExpirationDate metadata does not match the payload".into(),
+            );
+        }
+        Ok(signature)
+    }
 }
 
 impl WGConf {
@@ -97,10 +118,7 @@ impl WGConf {
                 allowed_ips: vec!["0.0.0.0/0".to_owned()],
                 endpoint: SocketAddr::new(server.server_public_ip, server.server_port),
                 hostname: Some(server.server_name),
-                port_forward_port: None,
-                port_forward_expiration: None,
-                port_forward_payload: None,
-                port_forward_signature: None,
+                port_forward: None,
                 persistent_keepalive: Some(25),
             },
         }
@@ -186,33 +204,12 @@ impl WGConf {
     }
 
     pub fn port_forward_signature(&self) -> Result<PortForwardSignature, Box<dyn Error>> {
-        let port = self
+        let metadata = self
             .peer
-            .port_forward_port
-            .ok_or("WireGuard config does not include #ForwardedPort metadata")?;
-        let expiration = self
-            .peer
-            .port_forward_expiration
+            .port_forward
             .clone()
-            .ok_or("WireGuard config does not include #ForwardedPortExpirationDate metadata")?;
-        let payload_raw =
-            self.peer.port_forward_payload.clone().ok_or(
-                "WireGuard config does not include #ForwardedPortActivationPayload metadata",
-            )?;
-        let signature = self.peer.port_forward_signature.clone().ok_or(
-            "WireGuard config does not include #ForwardedPortActivationSignature metadata",
-        )?;
-        let signature = PortForwardSignature::try_from_parts(payload_raw, signature)?;
-        if signature.payload.port != port {
-            return Err("Stored #ForwardedPort metadata does not match the payload".into());
-        }
-        let expiration = OffsetDateTime::parse(&expiration, &Rfc3339)?;
-        if signature.payload.expires_at != expiration {
-            return Err(
-                "Stored #ForwardedPortExpirationDate metadata does not match the payload".into(),
-            );
-        }
-        Ok(signature)
+            .ok_or("WireGuard config does not include port-forward metadata")?;
+        metadata.try_into_signature()
     }
 }
 
@@ -282,6 +279,91 @@ mod csv_vec {
     }
 }
 
+mod port_forward_metadata {
+    use super::{Deserialize, Deserializer, PortForwardMetadata, Serialize, Serializer};
+
+    #[derive(Serialize, Deserialize)]
+    struct Fields {
+        #[serde(
+            rename = "ForwardedPort",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        port: Option<String>,
+        #[serde(
+            rename = "ForwardedPortExpirationDate",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        expiration: Option<String>,
+        #[serde(
+            rename = "ForwardedPortActivationPayload",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        payload: Option<String>,
+        #[serde(
+            rename = "ForwardedPortActivationSignature",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        signature: Option<String>,
+    }
+
+    pub fn serialize<S>(
+        metadata: &Option<PortForwardMetadata>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let fields = match metadata {
+            Some(metadata) => Fields {
+                port: Some(metadata.port.to_string()),
+                expiration: Some(metadata.expiration.clone()),
+                payload: Some(metadata.payload.clone()),
+                signature: Some(metadata.signature.clone()),
+            },
+            None => Fields {
+                port: None,
+                expiration: None,
+                payload: None,
+                signature: None,
+            },
+        };
+        fields.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<PortForwardMetadata>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let fields = Fields::deserialize(deserializer)?;
+        match (
+            fields.port,
+            fields.expiration,
+            fields.payload,
+            fields.signature,
+        ) {
+            (None, None, None, None) => Ok(None),
+            (Some(port), Some(expiration), Some(payload), Some(signature)) => {
+                let port = port
+                    .parse()
+                    .map_err(|err| serde::de::Error::custom(format!("invalid port: {err}")))?;
+                Ok(Some(PortForwardMetadata {
+                    port,
+                    expiration,
+                    payload,
+                    signature,
+                }))
+            }
+            _ => Err(serde::de::Error::custom(
+                "WireGuard config includes incomplete port-forward metadata",
+            )),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -328,11 +410,7 @@ mod tests {
             "signature".to_owned(),
         )
         .unwrap();
-        wg_conf.peer.port_forward_port = Some(signature.payload.port);
-        wg_conf.peer.port_forward_expiration =
-            Some(signature.payload.expires_at.format(&Rfc3339).unwrap());
-        wg_conf.peer.port_forward_payload = Some(signature.payload_raw.clone());
-        wg_conf.peer.port_forward_signature = Some(signature.signature.clone());
+        wg_conf.peer.port_forward = Some(PortForwardMetadata::from_signature(&signature).unwrap());
 
         let serialized = wg_conf.to_ini().unwrap();
         assert!(serialized.contains("#ForwardedPort=12345"));
@@ -359,10 +437,7 @@ mod tests {
                 allowed_ips: vec!["0.0.0.0/0".to_owned()],
                 endpoint: SocketAddr::from_str("10.0.0.128:5336").unwrap(),
                 hostname: Some("test-server".to_owned()),
-                port_forward_port: None,
-                port_forward_expiration: None,
-                port_forward_payload: None,
-                port_forward_signature: None,
+                port_forward: None,
                 persistent_keepalive: Some(25),
             },
         }
